@@ -9,7 +9,7 @@
      accuracy:0.4171, precision:0.1417, f1:0.1168,
      train_loss_history:[...], test_loss_history:[...] }
 */
-const API_BASE_URL = "http://localhost:5000"; // Example: "http://localhost:5000"
+const API_BASE_URL = ""; // Example: "http://localhost:5000"
 const GENERATE_ENDPOINT = "/api/generate";
 const ANALYTICS_ENDPOINT = "/api/analytics";
 
