@@ -254,13 +254,13 @@ def generate_markov(chords, num_chords):
     diatonic = ["C", "Dm", "Em", "F", "G", "Am", "Bdim"]
 
     transitions = {
-        "C":   ["Am", "F", "G", "Dm"],
-        "Dm":  ["G", "Am", "C", "Bdim"],
-        "Em":  ["Am", "F", "C"],
-        "F":   ["G", "Am", "C", "Dm"],
-        "G":   ["C", "Am", "Em"],
-        "Am":  ["F", "Dm", "G", "C"],
-        "Bdim":["C", "Em", "G"]
+        "C":   ["A:min", "F:maj", "G:maj", "D:min"],
+        "D:min":  ["G:maj", "A:min", "C:maj", "B:dim"],
+        "E:min":  ["A:min", "F:maj", "C:maj"],
+        "F:maj":   ["G:maj", "A:min", "C:maj", "D:min"],
+        "G:maj":   ["C:maj", "A:min", "E:min"],
+        "A:min":  ["F:maj", "D:min", "G:maj", "C:maj"],
+        "B:dim":["C:maj", "E:min", "G:maj"]
     }
 
     sequence = [

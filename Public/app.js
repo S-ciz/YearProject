@@ -1,390 +1,741 @@
-/* CHORDLAB frontend
-   Set API_BASE_URL to your backend URL. Expected generation endpoint:
-   POST /api/generate
-   Body: { model: "Markov"|"LSTM"|"Transformer", key:"C:maj",
-           chords:["C","Am","F","G"], num_chords:4, tempo:96 }
-   Suggested response: { chords:["C","G","Am","F"], model:"LSTM" }
-   Optional analytics endpoint: GET /api/analytics?model=Markov
-   Expected analytics response: { epoch:100, train_loss:1.5548, test_loss:1.9177,
-     accuracy:0.4171, precision:0.1417, f1:0.1168,
-     train_loss_history:[...], test_loss_history:[...] }
-*/
-const API_BASE_URL = ""; // Example: "http://localhost:5000"
-const GENERATE_ENDPOINT = "/api/generate";
-const ANALYTICS_ENDPOINT = "/api/analytics";
 
-const chordData = {
-  C:{notes:["C4","E4","G4"],color:"#c7a7ff",quality:"MAJOR",degree:"I"},
-  Dm:{notes:["D4","F4","A4"],color:"#72d8d0",quality:"MINOR",degree:"ii"},
-  Em:{notes:["E4","G4","B4"],color:"#9da8ff",quality:"MINOR",degree:"iii"},
-  F:{notes:["F4","A4","C5"],color:"#f4a6d8",quality:"MAJOR",degree:"IV"},
-  G:{notes:["G4","B4","D5"],color:"#ffc38b",quality:"MAJOR",degree:"V"},
-  Am:{notes:["A4","C5","E5"],color:"#8bd5a9",quality:"MINOR",degree:"vi"},
-  Bdim:{notes:["B3","D4","F4"],color:"#e0a0a0",quality:"DIM",degree:"vii°"},
-  Cmaj7:{notes:["C4","E4","G4","B4"],color:"#c7a7ff",quality:"MAJ7",degree:"Imaj7"},
-  Dm7:{notes:["D4","F4","A4","C5"],color:"#72d8d0",quality:"MIN7",degree:"ii7"},
-  Fmaj7:{notes:["F4","A4","C5","E5"],color:"#f4a6d8",quality:"MAJ7",degree:"IVmaj7"},
-  G7:{notes:["G3","B3","D4","F4"],color:"#ffc38b",quality:"DOM7",degree:"V7"}
+/*
+ * ChordLab
+ * Frontend for an RNN-based next-chord predictor.
+ *
+ * Expected API:
+ * POST http://127.0.0.1:5000/generate
+ * {
+ *   "chords": ["C:maj", "F:maj", "G:maj"],
+ *   "num_chords": 4
+ * }
+ *
+ * Expected response:
+ * {
+ *   "generated_chords": ["A:min", "F:maj", "G:maj", "C:maj"]
+ * }
+ *
+ * Adapt API_URL and the request/response fields to match
+ * your actual Flask or Node.js backend.
+ */
+
+const API_URL = "http://127.0.0.1:5000/generate";
+
+const ROOTS = [
+    "A#", "A", "B", "C#", "C", "D#",
+    "D", "E", "F#", "F", "G#", "G"
+];
+
+const TYPES = ["aug", "dim", "dom7", "maj", "min", "sus"];
+
+const TYPE_NAMES = {
+    aug: "Augmented",
+    dim: "Diminished",
+    dom7: "Dominant 7th",
+    maj: "Major",
+    min: "Minor",
+    sus: "Suspended"
 };
-const initialProgression = ["C","Am","F","G"];
-let progression = [...initialProgression];
-let selectedModel = "Markov";
-let selectedChordIndex = 0;
-let audioStarted = false;
-let synth = null;
-let activeTimeouts = [];
-let isPlaying = false;
-let playStartedAt = 0;
-let playTimer = null;
-let toastTimer = null;
-const $ = (selector, root=document) => root.querySelector(selector);
-const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 
-function showToast(message) {
-  $("#toast-message").textContent = message;
-  $("#toast").classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 2700);
+const CHORDS = ROOTS.flatMap(root =>
+    TYPES.map(type => `${root}:${type}`)
+);
+
+const VALID_COUNTS = [2, 4, 6, 8, 10];
+
+let sequence = [];
+let generatedChords = [];
+let history = [];
+let activeFilter = "all";
+let draggedSequenceIndex = null;
+let audioContext = null;
+let playbackToken = 0;
+let isPlaying = false;
+
+const $ = id => document.getElementById(id);
+
+const chordLibrary = $("chordLibrary");
+const timeline = $("timeline");
+const emptyState = $("emptyState");
+const searchInput = $("searchInput");
+const sequenceCount = $("sequenceCount");
+const visibleCount = $("visibleCount");
+const chordCount = $("chordCount");
+const generateButton = $("generateButton");
+const generationStatus = $("generationStatus");
+const resultsSection = $("resultsSection");
+const resultTimeline = $("resultTimeline");
+const modelStatus = $("modelStatus");
+
+chordCount.textContent = `${CHORDS.length} chords`;
+
+// --------------------------------------------------
+// CHORD LIBRARY
+// --------------------------------------------------
+
+function getChordType(chord) {
+    return chord.split(":")[1];
 }
-function chordInfo(name) {
-  return chordData[name] || chordData.C;
-}
-function chordDisplayName(name) {
-  return name === "Bdim" ? "B°" : name;
-}
-function renderProgression() {
-  const list = $("#progression-list");
-  list.innerHTML = "";
-  progression.forEach((chord, index) => {
-    const info = chordInfo(chord);
-    const card = document.createElement("div");
-    card.className = "progression-chord" + (index === selectedChordIndex ? " active-chord" : "");
-    card.style.setProperty("--chord-color", info.color);
-    card.draggable = true;
-    card.dataset.index = String(index);
-    card.innerHTML = `<span class="pc-index">${String(index+1).padStart(2,"0")}</span><span class="pc-name">${chordDisplayName(chord)}</span><small>${info.quality}</small><button class="pc-remove" aria-label="Remove ${chord}" title="Remove chord">×</button>`;
-    card.addEventListener("click", event => {
-      if (event.target.closest(".pc-remove")) return;
-      selectedChordIndex = index;
-      renderProgression();
-      playSingleChord(chord);
+
+function renderLibrary() {
+    const search = searchInput.value.trim().toLowerCase();
+
+    const filtered = CHORDS.filter(chord => {
+        const matchesSearch = chord.toLowerCase().includes(search);
+
+        const matchesType =
+            activeFilter === "all" ||
+            getChordType(chord) === activeFilter;
+
+        return matchesSearch && matchesType;
     });
-    card.querySelector(".pc-remove").addEventListener("click", event => {
-      event.stopPropagation();
-      progression.splice(index, 1);
-      selectedChordIndex = Math.max(0, Math.min(selectedChordIndex, progression.length-1));
-      renderProgression();
+
+    visibleCount.textContent = filtered.length;
+
+    chordLibrary.innerHTML = filtered.map(chord => `
+        <button
+            class="chord-card"
+            draggable="true"
+            data-chord="${chord}"
+            aria-label="Add ${chord} to progression"
+            title="Drag or click to add ${chord}"
+        >
+            <span class="chord-name">${chord}</span>
+            <span class="chord-type">${TYPE_NAMES[getChordType(chord)]}</span>
+        </button>
+    `).join("");
+
+    chordLibrary.querySelectorAll(".chord-card").forEach(card => {
+        card.addEventListener("click", () => {
+            addChord(card.dataset.chord);
+        });
+
+        card.addEventListener("dragstart", event => {
+            event.dataTransfer.setData(
+                "text/plain",
+                card.dataset.chord
+            );
+
+            event.dataTransfer.effectAllowed = "copy";
+        });
     });
-    card.addEventListener("dragstart", event => {
-      event.dataTransfer.setData("text/chord-index", String(index));
-      event.dataTransfer.effectAllowed = "move";
-      card.classList.add("dragging");
+}
+
+searchInput.addEventListener("input", renderLibrary);
+
+$("typeFilters").addEventListener("click", event => {
+    const button = event.target.closest("[data-type]");
+
+    if (!button) return;
+
+    activeFilter = button.dataset.type;
+
+    document.querySelectorAll(".filter").forEach(filter => {
+        filter.classList.toggle("active", filter === button);
     });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
-    card.addEventListener("dragover", event => event.preventDefault());
-    card.addEventListener("drop", event => {
-      event.preventDefault();
-      const from = Number(event.dataTransfer.getData("text/chord-index"));
-      if (!Number.isNaN(from) && from >= 0 && from < progression.length && from !== index) {
-        const [moved] = progression.splice(from,1);
-        progression.splice(index,0,moved);
-        selectedChordIndex = index;
-        renderProgression();
-      } else {
-        const newChord = event.dataTransfer.getData("text/chord");
-        if (chordData[newChord]) { progression.splice(index,0,newChord); renderProgression(); }
-      }
-    });
-    list.appendChild(card);
-  });
-  $("#drop-hint").hidden = progression.length > 0;
-  $("#progress-count").textContent = `${progression.length} CHORD${progression.length === 1 ? "" : "S"}`;
-  $("#player-subtitle").innerHTML = `${progression.map(chordDisplayName).join(" · ") || "No chords yet"} <span>•</span> C Major`;
-  $("#player-title").textContent = progression.length ? "Your progression" : "Empty progression";
-  $("#progression-note").textContent = progression.length >= 4 ? "A classic, balanced progression" : progression.length ? "Your idea is taking shape" : "Add chords to get started";
-  renderPiano();
-}
-function addChord(chord, atIndex=progression.length) {
-  if (!chordData[chord]) return;
-  const max = Number($("#chord-count").value);
-  if (progression.length >= 10) { showToast("Progression limit reached (10 chords)"); return; }
-  progression.splice(Math.max(0, Math.min(atIndex, progression.length)), 0, chord);
-  selectedChordIndex = Math.min(atIndex, progression.length-1);
-  renderProgression();
-}
-function renderPiano() {
-  const piano = $("#piano");
-  piano.innerHTML = "";
-  const whites = ["C","D","E","F","G","A","B"];
-  const blacks = [{note:"C#",left:10.7},{note:"D#",left:24.9},{note:"F#",left:53.4},{note:"G#",left:67.7},{note:"A#",left:81.9}];
-  whites.forEach(note => {
-    const key = document.createElement("div");
-    key.className = "piano-key";
-    key.dataset.note = `${note}4`;
-    key.title = `${note}4`;
-    key.addEventListener("click", () => playNotes([`${note}4`]));
-    piano.appendChild(key);
-  });
-  blacks.forEach(item => {
-    const key = document.createElement("div");
-    key.className = "piano-key black";
-    key.style.left = `${item.left}%`;
-    key.dataset.note = `${item.note}4`;
-    key.title = `${item.note}4`;
-    key.addEventListener("click", () => playNotes([`${item.note}4`]));
-    piano.appendChild(key);
-  });
-}
-function highlightNotes(notes, duration=420) {
-  $$(".piano-key").forEach(key => key.classList.toggle("active", notes.includes(key.dataset.note)));
-  setTimeout(() => $$(".piano-key").forEach(key => key.classList.remove("active")), duration);
-}
-async function ensureAudio() {
-  if (typeof Tone === "undefined") {
-    showToast("Audio library unavailable. Check your internet connection.");
-    return false;
-  }
-  try {
-    await Tone.start();
-    if (!synth) synth = new Tone.PolySynth(Tone.Synth, { oscillator:{type:"triangle"}, envelope:{attack:0.025, decay:0.25, sustain:0.35, release:1.1} }).toDestination();
-    audioStarted = true;
-    return true;
-  } catch (error) {
-    showToast("Audio could not start. Click play again to allow audio.");
-    return false;
-  }
-}
-async function playNotes(notes, duration=0.8) {
-  if (!await ensureAudio()) return;
-  const vol = Number($("#volume").value) / 100;
-  synth.volume.value = vol === 0 ? -60 : -20 + 20 * Math.log10(vol);
-  synth.triggerAttackRelease(notes, duration);
-  highlightNotes(notes.map(n => n.replace(/([A-G]#?)\d/, "$1") + "4"));
-}
-async function playSingleChord(chord) {
-  const info = chordInfo(chord);
-  await playNotes(info.notes, 1.15);
-  $("#playing-label").textContent = `PREVIEW · ${chordDisplayName(chord).toUpperCase()}`;
-}
-async function playProgression() {
-  if (!progression.length) { showToast("Add at least one chord first"); return; }
-  if (isPlaying) { stopPlayback(); return; }
-  if (!await ensureAudio()) return;
-  isPlaying = true;
-  $("#play-icon").textContent = "Ⅱ";
-  $("#playing-label").textContent = "PLAYING PROGRESSION";
-  playStartedAt = Date.now();
-  const beatMs = 60000 / Number($("#tempo").value);
-  let index = 0;
-  const playNext = () => {
-    if (!isPlaying || index >= progression.length) {
-      if (isPlaying) { stopPlayback(); $("#playing-label").textContent = "PLAYBACK COMPLETE"; $("#time-label").textContent = "00:00"; $("#play-progress").style.width = "100%"; }
-      return;
+
+    renderLibrary();
+});
+
+// --------------------------------------------------
+// SEQUENCE EDITOR
+// --------------------------------------------------
+
+function saveHistory() {
+    history.push([...sequence]);
+
+    // Keep a manageable undo history.
+    if (history.length > 50) {
+        history.shift();
     }
-    selectedChordIndex = index;
-    renderProgression();
-    const chord = progression[index];
-    const notes = chordInfo(chord).notes;
-    const vol = Number($("#volume").value) / 100;
-    synth.volume.value = vol === 0 ? -60 : -20 + 20 * Math.log10(vol);
-    synth.triggerAttackRelease(notes, Math.max(.5, beatMs * 3.6 / 1000));
-    highlightNotes(notes, beatMs * 3.5);
-    $("#time-label").textContent = `00:${String(Math.round(index * beatMs * 4 / 1000)).padStart(2,"0")}`;
-    $("#play-progress").style.width = `${((index+1)/progression.length)*100}%`;
-    index++;
-    activeTimeouts.push(setTimeout(playNext, beatMs * 4));
-  };
-  playNext();
+
+    $("undoButton").disabled = history.length === 0;
 }
-function stopPlayback() {
-  isPlaying = false;
-  activeTimeouts.forEach(clearTimeout);
-  activeTimeouts = [];
-  $("#play-icon").textContent = "▶";
-  $("#playing-label").textContent = "READY TO PLAY";
-  if (playTimer) clearInterval(playTimer);
+
+function addChord(chord, index = sequence.length) {
+    if (!CHORDS.includes(chord)) return;
+
+    saveHistory();
+
+    sequence.splice(index, 0, chord);
+
+    clearResults();
+    renderSequence();
+
+    setStatus(`${chord} added to your progression.`);
 }
-function setupDragAndDrop() {
-  $$("#chord-palette [draggable=true], .extra-chords [draggable=true]").forEach(button => {
-    button.addEventListener("dragstart", event => {
-      event.dataTransfer.setData("text/chord", button.dataset.chord);
-      event.dataTransfer.effectAllowed = "copy";
-      button.classList.add("dragging");
+
+function removeChord(index) {
+    if (index < 0 || index >= sequence.length) return;
+
+    saveHistory();
+
+    sequence.splice(index, 1);
+
+    clearResults();
+    renderSequence();
+
+    setStatus("Chord removed.");
+}
+
+function moveChord(fromIndex, toIndex) {
+    if (
+        fromIndex === null ||
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        fromIndex >= sequence.length ||
+        toIndex < 0 ||
+        toIndex >= sequence.length
+    ) {
+        return;
+    }
+
+    saveHistory();
+
+    const [chord] = sequence.splice(fromIndex, 1);
+
+    sequence.splice(toIndex, 0, chord);
+
+    clearResults();
+    renderSequence();
+}
+
+function renderSequence() {
+    sequenceCount.textContent =
+        `${sequence.length} chord${sequence.length === 1 ? "" : "s"}`;
+
+    emptyState.hidden = sequence.length > 0;
+
+    timeline.querySelectorAll(".sequence-chip").forEach(chip => {
+        chip.remove();
     });
-    button.addEventListener("dragend", () => button.classList.remove("dragging"));
-    button.addEventListener("click", () => addChord(button.dataset.chord));
-  });
-  const zone = $("#drop-zone");
-  zone.addEventListener("dragover", event => { event.preventDefault(); zone.classList.add("drag-over"); event.dataTransfer.dropEffect = "copy"; });
-  zone.addEventListener("dragleave", event => { if (!zone.contains(event.relatedTarget)) zone.classList.remove("drag-over"); });
-  zone.addEventListener("drop", event => {
+
+    sequence.forEach((chord, index) => {
+        const chip = document.createElement("div");
+
+        chip.className = "sequence-chip";
+        chip.draggable = true;
+        chip.dataset.index = index;
+
+        chip.innerHTML = `
+            <span class="position">${String(index + 1).padStart(2, "0")}</span>
+            <span class="chord-name"></span>
+            <button class="remove-chip" aria-label="Remove chord"
+                    title="Remove chord">×</button>
+        `;
+
+        chip.querySelector(".chord-name").textContent = chord;
+
+        chip.querySelector(".remove-chip").addEventListener("click", event => {
+            event.stopPropagation();
+            removeChord(index);
+        });
+
+        chip.addEventListener("dragstart", event => {
+            draggedSequenceIndex = index;
+
+            event.dataTransfer.setData(
+                "application/x-chordlab-index",
+                String(index)
+            );
+
+            event.dataTransfer.effectAllowed = "move";
+        });
+
+        chip.addEventListener("dragover", event => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+        });
+
+        chip.addEventListener("drop", event => {
+            event.preventDefault();
+
+            const fromIndex = Number(
+                event.dataTransfer.getData(
+                    "application/x-chordlab-index"
+                )
+            );
+
+            if (Number.isInteger(fromIndex)) {
+                moveChord(fromIndex, index);
+            }
+        });
+
+        chip.addEventListener("dragend", () => {
+            draggedSequenceIndex = null;
+        });
+
+        timeline.appendChild(chip);
+    });
+
+    $("playInputButton").disabled = sequence.length === 0;
+    generateButton.disabled = sequence.length === 0;
+}
+
+timeline.addEventListener("dragover", event => {
     event.preventDefault();
-    zone.classList.remove("drag-over");
-    const chord = event.dataTransfer.getData("text/chord");
-    const index = event.dataTransfer.getData("text/chord-index");
-    if (chordData[chord]) addChord(chord);
-    else if (index !== "" && !Number.isNaN(Number(index))) {
-      const from = Number(index);
-      if (from >= 0 && from < progression.length) {
-        const [moved] = progression.splice(from,1);
-        progression.push(moved);
-        renderProgression();
-      }
+    timeline.classList.add("drag-over");
+});
+
+timeline.addEventListener("dragleave", event => {
+    if (!timeline.contains(event.relatedTarget)) {
+        timeline.classList.remove("drag-over");
     }
-  });
-}
-function chooseModel(model) {
-  selectedModel = model;
-  $$(".model-option").forEach(button => button.classList.toggle("selected", button.dataset.model === model));
-  const descriptions = {
-    Markov:["Markov model","Learns transitions between chord tokens from your training data."],
-    LSTM:["LSTM sequence model","Uses recurrent memory to learn patterns across chord sequences."],
-    Transformer:["Transformer model","Uses attention to capture relationships across the chord sequence."]
-  };
-  $("#model-info-title").textContent = descriptions[model][0];
-  $("#model-info-text").textContent = descriptions[model][1];
-}
-function makeDemoProgression(count, seed) {
-  const pools = {
-    Markov:["C","Am","F","G","Dm","Em","G7","Cmaj7","Fmaj7","Dm7"],
-    LSTM:["Am","F","C","G","Dm","Em","Fmaj7","Cmaj7","Dm7","G7"],
-    Transformer:["Cmaj7","Dm7","Em","Fmaj7","G7","Am","Dm","C","F","G"]
-  };
-  const pool = pools[seed] || pools.Markov;
-  let current = progression.length ? progression[progression.length-1] : "C";
-  const result = [];
-  for (let i=0;i<count;i++) {
-    let candidates = pool.filter(ch => ch !== current);
-    if (i === 0 && progression.length) candidates = pool.filter(ch => ch === current || chordInfo(ch));
-    const next = candidates[Math.floor(Math.random()*candidates.length)];
-    result.push(next);
-    current = next;
-  }
-  return result;
-}
-async function generateProgression() {
-  const button = $("#generate-button");
-  const count = Number($("#chord-count").value);
-  const requestBody = {model:selectedModel,key:"C:maj",chords:[...progression],num_chords:count,tempo:Number($("#tempo").value)};
-  button.disabled = true;
-  button.querySelector("span:nth-child(2)").textContent = "Generating...";
-  button.classList.add("loading");
-  try {
-    let generated;
-    if (API_BASE_URL) {
-      const response = await fetch(`${API_BASE_URL}${GENERATE_ENDPOINT}`, {
-        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(requestBody)
-      });
-      if (!response.ok) throw new Error(`API returned ${response.status}`);
-      const data = await response.json();
-      generated = data.chords || data.progression || data.generated_chords;
-      if (!Array.isArray(generated) || !generated.length) throw new Error("API response must include a non-empty chords array");
-      generated = generated.filter(ch => chordData[ch]);
-      if (!generated.length) throw new Error("The API returned chords not configured in this UI");
-      $("#api-mode-label").textContent = "API connected";
-      alert("api connected")
-    } else {
-      await new Promise(resolve => setTimeout(resolve, 650));
-      generated = makeDemoProgression(count, selectedModel);
-      $("#api-mode-label").textContent = "Demo mode";
+});
+
+timeline.addEventListener("drop", event => {
+    event.preventDefault();
+
+    timeline.classList.remove("drag-over");
+
+    const chord = event.dataTransfer.getData("text/plain");
+    const indexData = event.dataTransfer.getData(
+        "application/x-chordlab-index"
+    );
+
+    // Moving an existing chord within the timeline.
+    if (indexData !== "") {
+        const fromIndex = Number(indexData);
+        const target = event.target.closest(".sequence-chip");
+
+        if (target) {
+            moveChord(fromIndex, Number(target.dataset.index));
+        }
+
+        return;
     }
-    progression = generated.slice(0,count);
-    selectedChordIndex = 0;
-    renderProgression();
-    showToast(`${selectedModel} generated ${progression.length} chords`);
-  } catch (error) {
-    console.error(error);
-    showToast(`Generation failed: ${error.message}`);
-  } finally {
-    button.disabled = false;
-    button.querySelector("span:nth-child(2)").textContent = "Generate progression";
-    button.classList.remove("loading");
-  }
+
+    // Adding a new chord from the library.
+    if (CHORDS.includes(chord)) {
+        const target = event.target.closest(".sequence-chip");
+
+        const insertAt = target
+            ? Number(target.dataset.index)
+            : sequence.length;
+
+        addChord(chord, insertAt);
+    }
+});
+
+$("undoButton").addEventListener("click", () => {
+    if (history.length === 0) return;
+
+    sequence = history.pop();
+
+    clearResults();
+    renderSequence();
+
+    $("undoButton").disabled = history.length === 0;
+
+    setStatus("Previous progression restored.");
+});
+
+$("clearButton").addEventListener("click", () => {
+    if (sequence.length === 0) return;
+
+    saveHistory();
+
+    sequence = [];
+
+    clearResults();
+    renderSequence();
+
+    setStatus("Progression cleared.");
+});
+
+// --------------------------------------------------
+// RNN GENERATION
+// --------------------------------------------------
+
+function setStatus(message, type = "") {
+    generationStatus.textContent = message;
+    generationStatus.className = "generation-status";
+
+    if (type) {
+        generationStatus.classList.add(type);
+    }
 }
-function switchPage(page) {
-  $$(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === page));
-  $$(".page").forEach(section => section.classList.remove("active-page"));
-  $(`#${page}-page`).classList.add("active-page");
-  $("#breadcrumb-title").textContent = ({studio:"Studio",analytics:"Analytics",models:"Model lab"})[page];
-  if (page === "analytics") loadAnalytics();
-  window.scrollTo({top:0,behavior:"smooth"});
+
+function clearResults() {
+    generatedChords = [];
+    resultsSection.hidden = true;
+    resultTimeline.innerHTML = "";
 }
-function buildHistory(finalValue, startValue, curvature, noise=0.05) {
-  const values = [];
-  for (let i=0;i<100;i++) {
-    const t=i/99;
-    const value=startValue+(finalValue-startValue)*(1-Math.exp(-curvature*t))/(1-Math.exp(-curvature));
-    values.push(Math.max(.15,value+(Math.random()-.5)*noise*(1-t*.4)));
-  }
-  values[99]=finalValue;
-  return values;
+
+function renderResults() {
+    resultsSection.hidden = false;
+    resultTimeline.innerHTML = "";
+
+    generatedChords.forEach((chord, index) => {
+        const chip = document.createElement("div");
+
+        chip.className = "sequence-chip generated";
+
+        chip.innerHTML = `
+            <span class="position">${String(index + 1).padStart(2, "0")}</span>
+            <span class="chord-name"></span>
+        `;
+
+        chip.querySelector(".chord-name").textContent = chord;
+
+        resultTimeline.appendChild(chip);
+    });
 }
-const defaultMetrics = {epoch:100,train_loss:1.5548,test_loss:1.9177,accuracy:.4171,precision:.1417,f1:.1168};
-function pathFor(values, min=0.8, max=3.0) {
-  return values.map((value,i) => `${i===0?"M":"L"} ${(i/(values.length-1))*600} ${202-((value-min)/(max-min))*192}`).join(" ");
-}
-function drawLossChart(train, test) {
-  const trainPath=pathFor(train), testPath=pathFor(test);
-  $("#train-line").setAttribute("d",trainPath);
-  $("#test-line").setAttribute("d",testPath);
-  $("#train-area").setAttribute("d",`${trainPath} L 600 220 L 0 220 Z`);
-}
-function drawQuality(metrics) {
-  const items=[["Accuracy",metrics.accuracy,"#a58bff"],["Precision",metrics.precision,"#4de0c1"],["F1 score",metrics.f1,"#ffb875"]];
-  $("#quality-chart").innerHTML=items.map(([name,value,color])=>`<div class="quality-row"><span class="quality-name">${name}</span><div class="quality-track"><div class="quality-fill" style="width:${Math.max(0,Math.min(100,value*100))}%;background:${color}"></div></div><span class="quality-value">${Number(value).toFixed(4)}</span></div>`).join("");
-}
-function updateMetrics(metrics, trainHistory, testHistory, model) {
-  $("#metric-accuracy").innerHTML=`${(metrics.accuracy*100).toFixed(2)}<span>%</span>`;
-  $("#metric-train-loss").textContent=Number(metrics.train_loss).toFixed(4);
-  $("#metric-test-loss").textContent=Number(metrics.test_loss).toFixed(4);
-  $("#metric-f1").textContent=Number(metrics.f1).toFixed(4);
-  $("#loss-gap").textContent=(Number(metrics.test_loss)-Number(metrics.train_loss)).toFixed(4);
-  $("#f1-meter span").style.width=`${Math.max(0,Math.min(100,metrics.f1*100))}%`;
-  drawLossChart(trainHistory,testHistory);
-  drawQuality(metrics);
-  $("#metrics-table-body").innerHTML=`<tr><td><span class="table-model"><i class="table-dot"></i>${model}</span></td><td>${metrics.epoch||100} / ${metrics.epoch||100}</td><td>${Number(metrics.train_loss).toFixed(4)}</td><td>${Number(metrics.test_loss).toFixed(4)}</td><td><span class="table-accent">${Number(metrics.accuracy).toFixed(4)}</span></td><td>${Number(metrics.precision).toFixed(4)}</td><td>${Number(metrics.f1).toFixed(4)}</td></tr>`;
-}
-async function loadAnalytics() {
-  const model=$("#analytics-model").value || selectedModel;
-  let metrics={...defaultMetrics}, train=buildHistory(1.5548,2.9,3.1,.2), test=buildHistory(1.9177,2.95,2.0,.18);
-  if (API_BASE_URL) {
+
+generateButton.addEventListener("click", generateContinuation);
+
+async function generateContinuation() {
+    if (sequence.length === 0) {
+        setStatus("Add at least one input chord first.", "error");
+        return;
+    }
+
+    const requestedCount = Number($("generateCount").value);
+
+    if (!VALID_COUNTS.includes(requestedCount)) {
+        setStatus("Select a valid number of chords.", "error");
+        return;
+    }
+
+    const inputSequence = [...sequence];
+
+    generateButton.disabled = true;
+    generateButton.textContent = "Generating...";
+    modelStatus.textContent = "CONNECTING TO RNN";
+
+    setStatus(
+        `Sending ${inputSequence.length} input chords to the RNN...`
+    );
+
     try {
-      const response=await fetch(`${API_BASE_URL}${ANALYTICS_ENDPOINT}?model=${encodeURIComponent(model)}`);
-      if (!response.ok) throw new Error(`Analytics API returned ${response.status}`);
-      const data=await response.json();
-      metrics={...metrics,...data};
-      if (Array.isArray(data.train_loss_history) && data.train_loss_history.length>1) train=data.train_loss_history;
-      if (Array.isArray(data.test_loss_history) && data.test_loss_history.length>1) test=data.test_loss_history;
-    } catch(error) { console.warn(error); showToast("Could not load live analytics; showing sample metrics"); }
-  }
-  updateMetrics(metrics,train,test,model);
-  $$("#train-bars, #test-bars").forEach((el,idx)=>{
-    el.innerHTML="";
-    const vals=idx===0?train:test;
-    for(let i=0;i<18;i++){const bar=document.createElement("span");bar.style.height=`${10+Math.min(25,vals[Math.floor(i/17*(vals.length-1))]*8)}px`;el.appendChild(bar);}
-  });
+        const response = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                chords: inputSequence,
+                num_chords: requestedCount,
+                key: "C:maj"
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                `The model API returned HTTP ${response.status}.`
+            );
+        }
+
+        const data = await response.json();
+
+        // Accept a few common response formats.
+        const predictions =
+            data.generated_chords ??
+            data.continuation ??
+            data.chords;
+
+        if (!Array.isArray(predictions)) {
+            throw new Error(
+                "Invalid API response: expected an array of generated chords."
+            );
+        }
+
+        if (predictions.length !== requestedCount) {
+            throw new Error(
+                `The model returned ${predictions.length} chords; ` +
+                `${requestedCount} were requested.`
+            );
+        }
+
+        const invalidChords = predictions.filter(
+            chord => !CHORDS.includes(chord)
+        );
+
+        if (invalidChords.length > 0) {
+            throw new Error(
+                `The model returned unsupported chords: ${invalidChords.join(", ")}`
+            );
+        }
+
+        // Prevent a stale request from overwriting a changed progression.
+        if (
+            inputSequence.length !== sequence.length ||
+            inputSequence.some((chord, i) => chord !== sequence[i])
+        ) {
+            setStatus(
+                "Your input changed while the model was working. Generate again.",
+                "error"
+            );
+            return;
+        }
+
+        generatedChords = predictions;
+
+        renderResults();
+
+        modelStatus.textContent = "RNN CONNECTED";
+
+        setStatus(
+            `Successfully generated ${generatedChords.length} new chords.`,
+            "success"
+        );
+
+    } catch (error) {
+        console.error("RNN generation failed:", error);
+
+        modelStatus.textContent = "RNN DISCONNECTED";
+
+        setStatus(
+            `${error.message} Check that your API is running at ${API_URL}.`,
+            "error"
+        );
+    } finally {
+        generateButton.disabled = sequence.length === 0;
+        generateButton.innerHTML = "<span>✦</span> Generate continuation";
+    }
 }
-function downloadJson(filename, data) {
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+
+$("discardButton").addEventListener("click", () => {
+    clearResults();
+    setStatus("Generated results cleared.");
+});
+
+$("keepButton").addEventListener("click", () => {
+    if (generatedChords.length === 0) return;
+
+    saveHistory();
+
+    sequence = [...sequence, ...generatedChords];
+
+    clearResults();
+    renderSequence();
+
+    setStatus("Generated chords added to your progression.", "success");
+});
+
+$("playFullButton").addEventListener("click", () => {
+    if (generatedChords.length === 0) return;
+
+    playSequence([...sequence, ...generatedChords], "Full progression");
+});
+
+// --------------------------------------------------
+// WEB AUDIO PLAYER
+// --------------------------------------------------
+
+// MIDI pitch classes relative to C.
+const ROOT_SEMITONES = {
+    C: 0,
+    "C#": 1,
+    D: 2,
+    "D#": 3,
+    E: 4,
+    F: 5,
+    "F#": 6,
+    G: 7,
+    "G#": 8,
+    A: 9,
+    "A#": 10,
+    B: 11
+};
+
+const CHORD_INTERVALS = {
+    maj: [0, 4, 7],
+    min: [0, 3, 7],
+    dim: [0, 3, 6],
+    aug: [0, 4, 8],
+    dom7: [0, 4, 7, 10],
+    sus: [0, 5, 7]
+};
+
+function midiToFrequency(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
 }
-function init() {
-  renderProgression();
-  setupDragAndDrop();
-  $$(".nav-item").forEach(button=>button.addEventListener("click",()=>switchPage(button.dataset.page)));
-  $$(".model-option").forEach(button=>button.addEventListener("click",()=>chooseModel(button.dataset.model)));
-  $$(".use-model").forEach(button=>button.addEventListener("click",()=>{chooseModel(button.dataset.model);switchPage("studio");showToast(`${button.dataset.model} selected`);}));
-  $("#generate-button").addEventListener("click",generateProgression);
-  $("#clear-progression").addEventListener("click",()=>{progression=[];selectedChordIndex=0;stopPlayback();renderProgression();});
-  $("#shuffle-progression").addEventListener("click",()=>{if(!progression.length){showToast("Add chords before shuffling");return;}progression.sort(()=>Math.random()-.5);renderProgression();showToast("Progression shuffled");});
-  $("#tempo").addEventListener("input",event=>$("#tempo-value").textContent=event.target.value);
-  $("#play-button").addEventListener("click",playProgression);
-  $("#prev-chord").addEventListener("click",()=>{if(!progression.length)return;selectedChordIndex=(selectedChordIndex-1+progression.length)%progression.length;renderProgression();playSingleChord(progression[selectedChordIndex]);});
-  $("#next-chord").addEventListener("click",()=>{if(!progression.length)return;selectedChordIndex=(selectedChordIndex+1)%progression.length;renderProgression();playSingleChord(progression[selectedChordIndex]);});
-  $("#analytics-model").addEventListener("change",loadAnalytics);
-  $("#export-analytics").addEventListener("click",()=>downloadJson("chordlab-analytics.json",{model:$("#analytics-model").value,epoch:100,...defaultMetrics}));
-  $("#download-midi").addEventListener("click",()=>downloadJson("chordlab-progression.json",{key:"C:maj",tempo:Number($("#tempo").value),model:selectedModel,chords:progression}));
-  loadAnalytics();
+
+function chordFrequencies(chord) {
+    const [root, type] = chord.split(":");
+
+    const rootSemitone = ROOT_SEMITONES[root];
+    const intervals = CHORD_INTERVALS[type];
+
+    if (rootSemitone === undefined || !intervals) {
+        throw new Error(`Unsupported chord: ${chord}`);
+    }
+
+    // C4 is MIDI 60. Put all roots in a comfortable register.
+    const rootMidi = 60 + rootSemitone;
+
+    return intervals.map(interval =>
+        midiToFrequency(rootMidi + interval)
+    );
 }
-document.addEventListener("DOMContentLoaded",init);
+
+async function ensureAudioContext() {
+    const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+        throw new Error("Your browser does not support Web Audio.");
+    }
+
+    if (!audioContext) {
+        audioContext = new AudioContextClass();
+    }
+
+    if (audioContext.state === "suspended") {
+        await audioContext.resume();
+    }
+
+    return audioContext;
+}
+
+function playChordAt(chord, startTime, duration) {
+    const frequencies = chordFrequencies(chord);
+
+    frequencies.forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+
+        // Keep multiple simultaneous notes from clipping.
+        const volume = 0.12 / frequencies.length;
+
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(
+            volume,
+            startTime + 0.035
+        );
+
+        gain.gain.setValueAtTime(
+            volume,
+            startTime + duration * 0.72
+        );
+
+        gain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            startTime + duration
+        );
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration + 0.02);
+    });
+}
+
+async function playSequence(chords, title) {
+    if (chords.length === 0) return;
+
+    try {
+        await ensureAudioContext();
+
+        // Stop any previous scheduled sequence.
+        playbackToken++;
+        const currentToken = playbackToken;
+
+        isPlaying = true;
+
+        $("playerTitle").textContent = title;
+        $("playerSubtitle").textContent =
+            `Playing 0 / ${chords.length} chords`;
+
+        const chordDuration = 0.85;
+        const gap = 0.08;
+        const startTime = audioContext.currentTime + 0.08;
+
+        chords.forEach((chord, index) => {
+            const time = startTime + index * (chordDuration + gap);
+
+            playChordAt(chord, time, chordDuration);
+
+            window.setTimeout(() => {
+                if (currentToken !== playbackToken) return;
+
+                $("playerSubtitle").textContent =
+                    `Playing ${index + 1} / ${chords.length}: ${chord}`;
+            }, Math.max(0, (time - audioContext.currentTime) * 1000));
+        });
+
+        const totalDuration =
+            chords.length * (chordDuration + gap);
+
+        window.setTimeout(() => {
+            if (currentToken !== playbackToken) return;
+
+            isPlaying = false;
+
+            $("playerSubtitle").textContent =
+                `Finished · ${chords.length} chords`;
+
+        }, totalDuration * 1000);
+
+    } catch (error) {
+        console.error("Playback failed:", error);
+
+        $("playerSubtitle").textContent = error.message;
+    }
+}
+
+$("playInputButton").addEventListener("click", () => {
+    playSequence(sequence, "Input progression");
+});
+
+$("stopButton").addEventListener("click", () => {
+    playbackToken++;
+    isPlaying = false;
+
+    if (audioContext && audioContext.state === "running") {
+        // Fade out currently sounding notes quickly.
+        audioContext.suspend().then(() => {
+            audioContext.resume();
+        });
+    }
+
+    $("playerTitle").textContent = "ChordLab Player";
+    $("playerSubtitle").textContent = "Playback stopped";
+});
+
+// --------------------------------------------------
+// KEYBOARD SHORTCUTS AND INITIALIZATION
+// --------------------------------------------------
+
+document.addEventListener("keydown", event => {
+    const target = event.target;
+
+    if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+    ) {
+        return;
+    }
+
+    if (event.key === "/" && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        searchInput.focus();
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+
+        if (history.length > 0) {
+            $("undoButton").click();
+        }
+    }
+});
+
+function initializeApp() {
+    renderLibrary();
+    renderSequence();
+
+    $("undoButton").disabled = true;
+    $("playInputButton").disabled = true;
+    generateButton.disabled = true;
+
+    setStatus("Add at least one chord to begin.");
+}
+
+initializeApp();

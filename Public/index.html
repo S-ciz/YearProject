@@ -1,141 +1,195 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0b0b14" />
-  <title>CHORDLAB — AI Chord Studio</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#10131b">
+    <title>ChordLab | RNN Chord Generator</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#" aria-label="Chordlab home">
-        <span class="brand-mark"><span></span><span></span><span></span></span>
-        <span>CHORD<span class="brand-light">LAB</span><small>AI MUSIC STUDIO</small></span>
-      </a>
-      <div class="side-label">WORKSPACE</div>
-      <nav class="nav">
-        <button class="nav-item active" data-page="studio"><span class="nav-icon">◈</span> Studio <span class="nav-dot"></span></button>
-       
-        <button class="nav-item" data-page="models"><span class="nav-icon">⌘</span> Model lab</button>
-      </nav>
-      <div class="side-label library-label">YOUR LIBRARY</div>
-      <button class="library-item"><span class="library-art art-purple">♫</span><span>Late night ideas<small>4 progressions</small></span></button>
-      <button class="library-item"><span class="library-art art-teal">⌁</span><span>Neo-soul sketches<small>7 progressions</small></span></button>
-      <div class="sidebar-bottom">
-        <div class="status-card"><span class="status-pulse"></span><div><strong>Studio is ready</strong><small>Local demo environment</small></div></div>
-        <button class="profile"><span class="avatar">CL</span><span><strong>Creator workspace</strong><small>Free studio</small></span><span class="profile-more">···</span></button>
-      </div>
-    </aside>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="#">
+                <span class="brand-icon">♫</span>
+                <span>Chord<span class="brand-accent">Lab</span></span>
+            </a>
 
-    <main class="main">
-      <header class="topbar">
-        <div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb-title">Studio</strong></div>
-        <div class="top-actions"><span class="live-badge"><i></i> SYSTEM ONLINE</span><button class="icon-button" title="Notifications">♧</button><button class="help-button">? <span>Help</span></button></div>
-      </header>
-
-      <section class="page active-page" id="studio-page">
-        <div class="hero">
-          <div><div class="eyebrow"><span class="eyebrow-line"></span> YOUR AI COMPOSITION SPACE</div>
-            <h1>Compose something<br><span>unexpected.</span></h1>
-            <p>Shape a progression. Let your model find the next move.</p>
-          </div>
-          <div class="hero-orb" aria-hidden="true"><div class="orb-ring ring-one"></div><div class="orb-ring ring-two"></div><div class="orb-core">♪</div><span class="orb-note note-a">♩</span><span class="orb-note note-b">♫</span><span class="orb-note note-c">♪</span></div>
-        </div>
-
-        <div class="studio-grid">
-          <section class="panel palette-panel">
-            <div class="panel-heading"><div><span class="step-tag">01</span><h2>Chord palette</h2></div><span class="tiny-pill">C MAJOR</span></div>
-            <p class="panel-subtitle">Drag a chord into your progression.</p>
-            <div class="palette-group-label">DIATONIC CHORDS</div>
-            <div class="chord-palette" id="chord-palette">
-              <button class="palette-chord chord-c" draggable="true" data-chord="C"><span class="chord-symbol">C</span><small>I · MAJOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-dm" draggable="true" data-chord="Dm"><span class="chord-symbol">Dm</span><small>ii · MINOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-em" draggable="true" data-chord="Em"><span class="chord-symbol">Em</span><small>iii · MINOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-f" draggable="true" data-chord="F"><span class="chord-symbol">F</span><small>IV · MAJOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-g" draggable="true" data-chord="G"><span class="chord-symbol">G</span><small>V · MAJOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-am" draggable="true" data-chord="Am"><span class="chord-symbol">Am</span><small>vi · MINOR</small><span class="drag-grip">⠿</span></button>
-              <button class="palette-chord chord-bdim" draggable="true" data-chord="Bdim"><span class="chord-symbol">B°</span><small>vii° · DIM</small><span class="drag-grip">⠿</span></button>
+            <div class="topbar-right">
+                <span class="key-label">
+                    <span class="status-dot"></span>
+                    KEY: C MAJOR
+                </span>
+                <span class="model-label" id="modelStatus">RNN DISCONNECTED</span>
             </div>
-            <div class="palette-group-label extra-label">COLOR CHORDS <span>OPTIONAL</span></div>
-            <div class="extra-chords"><button draggable="true" data-chord="Cmaj7">Cmaj7 <span>+</span></button><button draggable="true" data-chord="Dm7">Dm7 <span>+</span></button><button draggable="true" data-chord="Fmaj7">Fmaj7 <span>+</span></button><button draggable="true" data-chord="G7">G7 <span>+</span></button></div>
-            <div class="palette-tip"><span>✦</span> Tip: Try <b>Am → F → C → G</b> for a familiar, emotional sound.</div>
-          </section>
+        </header>
 
-          <section class="panel progression-panel">
-            <div class="panel-heading"><div><span class="step-tag">02</span><h2>Your progression</h2></div><button class="text-button" id="clear-progression">Clear all <span>↗</span></button></div>
-            <div class="progression-meta"><span id="progress-count">4 CHORDS</span><span class="key-label"><span class="key-dot"></span> KEY OF C MAJOR</span></div>
-            <div class="drop-zone" id="drop-zone">
-              <div class="progression-list" id="progression-list"></div>
-              <div class="drop-hint" id="drop-hint"><span class="drop-plus">＋</span><strong>Drop chords here</strong><small>or click a chord from the palette</small></div>
-            </div>
-            <div class="progression-footer"><span><span class="mini-spark">✦</span> <span id="progression-note">A classic, balanced progression</span></span><button class="shuffle-button" id="shuffle-progression">↻ Shuffle</button></div>
-            <div class="keyboard-wrap"><div class="keyboard-label"><span>PIANO PREVIEW</span><span>1 OCTAVE · C4–B4</span></div><div class="piano" id="piano" aria-label="Piano keyboard preview"></div></div>
-          </section>
+        <main>
+            <section class="hero">
+                <div class="eyebrow">YOUR AI MUSIC WORKSPACE</div>
+                <h1>Build a progression.<br>
+                    <span>Discover what comes next.</span>
+                </h1>
+                <p>
+                    Arrange chords, generate a continuation with your RNN,
+                    and listen to your progression come alive.
+                </p>
+            </section>
 
-          <section class="panel settings-panel">
-            <div class="panel-heading"><div><span class="step-tag">03</span><h2>Generation</h2></div><span class="settings-glyph">✳</span></div>
-            <p class="panel-subtitle">Choose how your next idea takes shape.</p>
-            <label class="field-label">GENERATION MODEL</label>
-            <div class="model-selector" role="group" aria-label="Select model">
-              <button class="model-option selected" data-model="Markov"><span class="model-symbol">⌁</span><span>Markov<small>Fast &amp; classic</small></span><i>✓</i></button>
-              <button class="model-option" data-model="LSTM"><span class="model-symbol">⟲</span><span>LSTM<small>Sequence memory</small></span><i>✓</i></button>
-              <button class="model-option" data-model="Transformer"><span class="model-symbol">✣</span><span>Transformer<small>Context aware</small></span><i>✓</i></button>
-            </div>
-            <div class="field-row"><label class="field-label" for="chord-count">NUMBER OF CHORDS</label><span class="field-hint">Sequence length</span></div>
-            <div class="select-wrap"><select id="chord-count"><option value="2">2 chords</option><option value="4" selected>4 chords</option><option value="8">8 chords</option><option value="10">10 chords</option></select><span>⌄</span></div>
-            <div class="field-row tempo-row"><label class="field-label" for="tempo">TEMPO</label><span class="tempo-value"><span id="tempo-value">96</span> BPM</span></div>
-            <input type="range" id="tempo" min="60" max="160" value="96" />
-            <div class="range-labels"><span>60 BPM</span><span>160 BPM</span></div>
-            <div class="settings-divider"></div>
-            <div class="model-info"><span class="info-icon">i</span><span><strong id="model-info-title">Markov model</strong><small id="model-info-text">Learns transitions between chord tokens from your training data.</small></span></div>
-            <button class="generate-button" id="generate-button"><span class="button-star">✦</span><span>Generate progression</span><span class="button-arrow">↗</span></button>
-            <div class="api-note"><span class="api-dot"></span> <span id="api-mode-label">Demo mode</span><span class="api-separator">·</span> Ready to generate</div>
-          </section>
-        </div>
+            <section class="workspace">
+                <aside class="panel library-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <div class="section-kicker">01 / EXPLORE</div>
+                            <h2>Chord library</h2>
+                        </div>
+                        <span class="count-badge" id="chordCount">72 chords</span>
+                    </div>
 
-        <section class="player-bar">
-          <div class="player-track"><div class="track-art">♫</div><div><strong id="player-title">Your progression</strong><small id="player-subtitle">C · Am · F · G <span>•</span> C Major</small></div></div>
-          <div class="player-controls"><button class="player-side" id="prev-chord" title="Previous chord">|◀</button><button class="play-button" id="play-button" title="Play progression"><span id="play-icon">▶</span></button><button class="player-side" id="next-chord" title="Next chord">▶|</button></div>
-          <div class="player-progress"><div class="player-progress-top"><span id="playing-label">READY TO PLAY</span><span id="time-label">00:00</span></div><div class="progress-track"><div id="play-progress"></div></div></div>
-          <div class="player-right"><div class="volume-icon">◖))</div><input aria-label="Volume" id="volume" type="range" min="0" max="100" value="65" /><span class="player-divider"></span><button class="player-more" id="download-midi" title="Export progression as JSON">⇩</button></div>
-        </section>
-      </section>
+                    <label class="search-box">
+                        <span>⌕</span>
+                        <input id="searchInput" type="search"
+                               placeholder="Search chords..." autocomplete="off">
+                        <kbd>/</kbd>
+                    </label>
 
-      <section class="page" id="analytics-page">
-        <div class="page-title-row"><div><div class="eyebrow"><span class="eyebrow-line"></span> MODEL INTELLIGENCE</div><h1 class="page-heading">Performance <span>analytics.</span></h1><p class="page-description">Understand how your chord prediction models learn, generalize, and perform.</p></div><div class="analytics-actions"><span class="tiny-pill">LATEST RUN</span><button class="outline-button" id="export-analytics">⇩ Export metrics</button></div></div>
-        <div class="analytics-model-row"><div><span class="field-label">MODEL</span><select id="analytics-model" class="analytics-select"><option>Markov</option><option>LSTM</option><option>Transformer</option></select></div><div class="run-meta"><span class="status-pulse"></span> Last training run <b>·</b> Epoch 100 / 100</div></div>
-        <div class="metric-grid">
-          <article class="metric-card metric-highlight"><div class="metric-top"><span>TEST ACCURACY</span><span class="metric-icon">◉</span></div><div class="metric-number" id="metric-accuracy">41.71<span>%</span></div><div class="metric-foot"><span class="metric-bullet"></span> Correct predictions on test set</div><div class="sparkline"><svg viewBox="0 0 240 44" preserveAspectRatio="none"><path class="spark-fill" d="M0 38 C20 34 26 37 42 27 S70 32 86 20 S112 26 130 15 S157 22 175 10 S205 17 240 3 L240 44 L0 44 Z"/><path class="spark-path" d="M0 38 C20 34 26 37 42 27 S70 32 86 20 S112 26 130 15 S157 22 175 10 S205 17 240 3"/></svg></div></article>
-          <article class="metric-card"><div class="metric-top"><span>TRAIN LOSS</span><span class="metric-icon purple-icon">⌁</span></div><div class="metric-number" id="metric-train-loss">1.5548</div><div class="metric-foot"><span class="trend-down">↘</span> Training objective</div><div class="mini-bars" id="train-bars"></div></article>
-          <article class="metric-card"><div class="metric-top"><span>TEST LOSS</span><span class="metric-icon orange-icon">⌁</span></div><div class="metric-number" id="metric-test-loss">1.9177</div><div class="metric-foot"><span class="trend-up">↗</span> Generalization gap <b id="loss-gap">0.3629</b></div><div class="mini-bars orange-bars" id="test-bars"></div></article>
-          <article class="metric-card"><div class="metric-top"><span>F1 SCORE</span><span class="metric-icon teal-icon">✳</span></div><div class="metric-number" id="metric-f1">0.1168</div><div class="metric-foot"><span class="metric-bullet teal-bullet"></span> Precision and recall balance</div><div class="f1-meter"><span></span></div></article>
-        </div>
-        <div class="chart-grid">
-          <section class="panel chart-panel"><div class="chart-heading"><div><h2>Learning curve</h2><p>Loss across training epochs</p></div><div class="chart-legend"><span><i class="legend-train"></i> Train loss</span><span><i class="legend-test"></i> Test loss</span></div></div><div class="chart-area"><div class="y-labels"><span>3.0</span><span>2.5</span><span>2.0</span><span>1.5</span><span>1.0</span></div><svg id="loss-chart" viewBox="0 0 600 220" preserveAspectRatio="none" role="img" aria-label="Training and test loss chart"><defs><linearGradient id="trainGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9c7cff" stop-opacity=".25"/><stop offset="1" stop-color="#9c7cff" stop-opacity="0"/></linearGradient></defs><g class="chart-grid-lines"><line x1="0" y1="10" x2="600" y2="10"/><line x1="0" y1="58" x2="600" y2="58"/><line x1="0" y1="106" x2="600" y2="106"/><line x1="0" y1="154" x2="600" y2="154"/><line x1="0" y1="202" x2="600" y2="202"/></g><path id="train-area" fill="url(#trainGradient)" d=""/><path id="train-line" class="chart-line train-line" d=""/><path id="test-line" class="chart-line test-line" d=""/></svg></div><div class="x-labels"><span>Epoch 1</span><span>20</span><span>40</span><span>60</span><span>80</span><span>100</span></div></section>
-          <section class="panel chart-panel"><div class="chart-heading"><div><h2>Classification quality</h2><p>Metrics at final epoch</p></div><span class="tiny-pill">EPOCH 100</span></div><div class="quality-chart" id="quality-chart"></div><div class="quality-note"><span class="note-icon">i</span><span>Accuracy is noticeably higher than F1. This can indicate imbalanced chord classes or low recall. Review per-class metrics before drawing conclusions.</span></div></section>
-        </div>
-        <section class="panel metrics-table-panel"><div class="chart-heading"><div><h2>Run summary</h2><p>Recorded final-epoch measurements</p></div><span class="tiny-pill">REPRODUCIBLE RUN</span></div><div class="table-wrap"><table><thead><tr><th>MODEL</th><th>EPOCH</th><th>TRAIN LOSS</th><th>TEST LOSS</th><th>ACCURACY</th><th>PRECISION</th><th>F1 SCORE</th></tr></thead><tbody id="metrics-table-body"><tr><td><span class="table-model"><i class="table-dot"></i> Markov</span></td><td>100 / 100</td><td>1.5548</td><td>1.9177</td><td><span class="table-accent">0.4171</span></td><td>0.1417</td><td>0.1168</td></tr></tbody></table></div></section>
-        <p class="analytics-disclaimer">Displayed values are the sample metrics supplied for this UI. Connect your training API to display live experiment results.</p>
-      </section>
+                    <div class="filter-list" id="typeFilters">
+                        <button class="filter active" data-type="all">All</button>
+                        <button class="filter" data-type="maj">Major</button>
+                        <button class="filter" data-type="min">Minor</button>
+                        <button class="filter" data-type="dom7">7th</button>
+                        <button class="filter" data-type="dim">Dim</button>
+                        <button class="filter" data-type="aug">Aug</button>
+                        <button class="filter" data-type="sus">Sus</button>
+                    </div>
 
-      <section class="page" id="models-page">
-        <div class="page-title-row"><div><div class="eyebrow"><span class="eyebrow-line"></span> EXPERIMENT WORKBENCH</div><h1 class="page-heading">Choose your <span>model.</span></h1><p class="page-description">Each architecture approaches chord sequences differently.</p></div></div>
-        <div class="model-cards">
-          <article class="panel model-card"><div class="model-card-icon purple-icon">⌁</div><span class="tiny-pill">PROBABILISTIC</span><h2>Markov Model</h2><p>Predicts the next chord from transition probabilities learned from preceding chords. Lightweight, interpretable, and useful as a baseline.</p><div class="model-tags"><span>Fast inference</span><span>Transition-based</span></div><button class="outline-button use-model" data-model="Markov">Use Markov model ↗</button></article>
-          <article class="panel model-card"><div class="model-card-icon teal-icon">⟲</div><span class="tiny-pill">RECURRENT NEURAL NETWORK</span><h2>LSTM</h2><p>Uses gated memory to learn sequential patterns and longer-range dependencies in chord progressions.</p><div class="model-tags"><span>Sequence memory</span><span>Neural network</span></div><button class="outline-button use-model" data-model="LSTM">Use LSTM ↗</button></article>
-          <article class="panel model-card"><div class="model-card-icon orange-icon">✣</div><span class="tiny-pill">ATTENTION-BASED</span><h2>Transformer</h2><p>Uses attention to relate positions across a sequence and model broader contextual chord relationships.</p><div class="model-tags"><span>Self-attention</span><span>Context aware</span></div><button class="outline-button use-model" data-model="Transformer">Use Transformer ↗</button></article>
-        </div>
-        <div class="panel endpoint-panel"><div class="endpoint-symbol">⌘</div><div><h2>Connect your inference API</h2><p>Set <code>API_BASE_URL</code> in <code>app.js</code> and map the request payload to your server endpoint.</p></div><span class="tiny-pill">REST READY</span></div>
-      </section>
-      <footer class="footer"><span>CHORDLAB <span class="footer-dot">·</span> Compose with curiosity.</span><span>Built for musical exploration <span class="footer-heart">✦</span></span></footer>
-    </main>
-  </div>
-  <div class="toast" id="toast" role="status" aria-live="polite"><span>✦</span><p id="toast-message">Progression generated</p></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-  <script src="app.js"></script>
+                    <div class="library-meta">
+                        <span>AVAILABLE CHORDS</span>
+                        <span id="visibleCount">72</span>
+                    </div>
+
+                    <div class="chord-library" id="chordLibrary"></div>
+
+                    <div class="library-tip">
+                        <span>✦</span>
+                        Drag a chord into your progression, or click it to add it.
+                    </div>
+                </aside>
+
+                <section class="panel editor-panel">
+                    <div class="panel-heading editor-heading">
+                        <div>
+                            <div class="section-kicker">02 / COMPOSE</div>
+                            <h2>Your progression</h2>
+                        </div>
+                        <button class="text-button" id="clearButton">Clear all ↗</button>
+                    </div>
+
+                    <div class="timeline-info">
+                        <span><span class="live-dot"></span> COMPOSITION TIMELINE</span>
+                        <span id="sequenceCount">0 chords</span>
+                    </div>
+
+                    <div class="timeline" id="timeline">
+                        <div class="empty-state" id="emptyState">
+                            <div class="empty-icon">＋</div>
+                            <strong>Your music starts here</strong>
+                            <p>Drag chords from the library into this space.</p>
+                            <span>OR CLICK ANY CHORD TO ADD IT</span>
+                        </div>
+                    </div>
+
+                    <div class="sequence-actions">
+                        <button class="secondary-button" id="undoButton" disabled>
+                            ↶ Undo
+                        </button>
+                        <button class="secondary-button" id="playInputButton">
+                            ▶ Play input
+                        </button>
+                    </div>
+
+                    <div class="divider"></div>
+
+                    <div class="panel-heading generate-heading">
+                        <div>
+                            <div class="section-kicker">03 / GENERATE</div>
+                            <h2>Let AI continue</h2>
+                        </div>
+                        <span class="ai-badge">✦ RNN</span>
+                    </div>
+
+                    <p class="generate-description">
+                        Your input progression becomes the context for the
+                        next-chord predictor. Choose how many new chords to add.
+                    </p>
+
+                    <div class="generation-controls">
+                        <div class="field-group">
+                            <label for="generateCount">NEW CHORDS</label>
+                            <select id="generateCount">
+                                <option value="2">2 chords</option>
+                                <option value="4" selected>4 chords</option>
+                                <option value="6">6 chords</option>
+                                <option value="8">8 chords</option>
+                                <option value="10">10 chords</option>
+                            </select>
+                        </div>
+
+                        <button class="generate-button" id="generateButton">
+                            <span>✦</span> Generate continuation
+                        </button>
+                    </div>
+
+                    <div class="generation-status" id="generationStatus"
+                         role="status" aria-live="polite">
+                        Add at least one chord to begin.
+                    </div>
+
+                    <div class="results-section" id="resultsSection" hidden>
+                        <div class="results-heading">
+                            <div>
+                                <div class="section-kicker">YOUR NEW SEQUENCE</div>
+                                <h3>Generated continuation</h3>
+                            </div>
+                            <button class="text-button" id="discardButton">
+                                Reset results
+                            </button>
+                        </div>
+
+                        <div class="timeline result-timeline" id="resultTimeline"></div>
+
+                        <div class="result-actions">
+                            <button class="secondary-button" id="playFullButton">
+                                ▶ Play full sequence
+                            </button>
+                            <button class="primary-button" id="keepButton">
+                                + Add to progression
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="player">
+                        <div class="player-icon">♫</div>
+                        <div class="player-details">
+                            <strong id="playerTitle">ChordLab Player</strong>
+                            <span id="playerSubtitle">Ready when you are</span>
+                        </div>
+                        <div class="player-controls">
+                            <button id="stopButton" title="Stop playback"
+                                    aria-label="Stop playback">■</button>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <footer>
+                <span>CHORDLAB <span class="footer-separator">/</span> RNN MUSIC GENERATION</span>
+                <span>Compose something unexpected.</span>
+            </footer>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
 </body>
 </html>

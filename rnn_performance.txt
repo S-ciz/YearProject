@@ -1,0 +1,65 @@
+Songs loaded: 909
+Distinct chords: 72
+Training transitions: 96009
+Weight initialization: Xavier uniform
+
+Starting training...
+
+Epoch 1/500 | Loss: 2.9364
+Epoch 10/500 | Loss: 1.9873
+Epoch 20/500 | Loss: 1.8852
+Epoch 30/500 | Loss: 1.8376
+Epoch 40/500 | Loss: 1.8053
+Epoch 50/500 | Loss: 1.7820
+Epoch 60/500 | Loss: 1.7635
+Epoch 70/500 | Loss: 1.7469
+Epoch 80/500 | Loss: 1.7323
+Epoch 90/500 | Loss: 1.7224
+Epoch 100/500 | Loss: 1.7103
+Epoch 110/500 | Loss: 1.7013
+Epoch 120/500 | Loss: 1.6920
+Epoch 130/500 | Loss: 1.6837
+Epoch 140/500 | Loss: 1.6810
+Epoch 150/500 | Loss: 1.6697
+Epoch 160/500 | Loss: 1.6653
+Epoch 170/500 | Loss: 1.6594
+Epoch 180/500 | Loss: 1.6532
+Epoch 190/500 | Loss: 1.6493
+Epoch 200/500 | Loss: 1.6438
+Epoch 210/500 | Loss: 1.6413
+Epoch 220/500 | Loss: 1.6333
+Epoch 230/500 | Loss: 1.6329
+Epoch 240/500 | Loss: 1.6255
+Epoch 250/500 | Loss: 1.6256
+Epoch 260/500 | Loss: 1.6211
+Epoch 270/500 | Loss: 1.6152
+Epoch 280/500 | Loss: 1.6348
+Epoch 290/500 | Loss: 1.6129
+Epoch 300/500 | Loss: 1.6084
+Epoch 310/500 | Loss: 1.6045
+Epoch 320/500 | Loss: 1.6037
+Epoch 330/500 | Loss: 1.6146
+Epoch 340/500 | Loss: 1.6009
+Epoch 350/500 | Loss: 1.5968
+Epoch 360/500 | Loss: 1.5934
+Epoch 370/500 | Loss: 1.5922
+Epoch 380/500 | Loss: 1.5905
+Epoch 390/500 | Loss: 1.5872
+Epoch 400/500 | Loss: 1.5898
+Epoch 410/500 | Loss: 1.5832
+Epoch 420/500 | Loss: 1.5866
+Epoch 430/500 | Loss: 1.5813
+Epoch 440/500 | Loss: 1.5787
+Epoch 450/500 | Loss: 1.5831
+Epoch 460/500 | Loss: 1.5768
+Epoch 470/500 | Loss: 1.5735
+Epoch 480/500 | Loss: 1.5747
+Epoch 490/500 | Loss: 1.5720
+Epoch 500/500 | Loss: 1.5718
+
+======================================
+           TRAINING RESULTS
+======================================
+Initial loss: 2.9364
+Final loss: 1.5718
+Saved model: C:\Users\mushi\Desktop\Honours 2026\Revelation\rnn_chord_model.jso
